@@ -13,7 +13,7 @@ import "../AutheoCentralStore.sol";
  * @dev ERC721 contract for issuing Delegate Node Licenses. Supports payments in ETH, USDT and USDC.
  * @author Shiv Sharma - Zeeve
  */
-contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
+contract AutheoNodeLicense3 is ERC721, ReentrancyGuard {
     using Strings for uint256;
 
     // Reference to the AutheoCentralStore contract for price feeds, referrals and token checks
@@ -46,6 +46,8 @@ contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
     // Time period for which NFTs remain locked (1 year)
     uint256 public constant LOCK_PERIOD = 365 days;
 
+    mapping(address => mapping(uint256 => bool)) public isNodeHosted;
+
     /**
      * @dev Events to notify about contract updates.
      */
@@ -54,6 +56,12 @@ contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
     event PaymentReceiverUpdated(
         address indexed newPaymentReceiver,
         address indexed oldPaymentReceiver
+    );
+
+    event NodeHostedStatusUpdated(
+        address indexed holder,
+        uint256 id,
+        bool status
     );
 
     event TradeOrder(
@@ -126,6 +134,22 @@ contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
         emit PaymentReceiverUpdated(_paymentReceiver, paymentReceiver);
 
         paymentReceiver = _paymentReceiver;
+    }
+
+    function updateNodeHostedStatus(
+        address _holder,
+        uint256 _id,
+        bool _isNodeHosted
+    ) external onlyAdmin {
+        require(ownerOf(_id) == _holder, "Holder is not an owner of token");
+        require(
+            isNodeHosted[_holder][_id] != _isNodeHosted,
+            "Node hosted status already updated"
+        );
+
+        isNodeHosted[_holder][_id] = _isNodeHosted;
+
+        emit NodeHostedStatusUpdated(_holder, _id, _isNodeHosted);
     }
 
     /**
@@ -332,7 +356,7 @@ contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
         address from,
         address to,
         uint256 tokenId
-    ) public virtual override {
+    ) public virtual override onlyWhenNodeNotHosted(from, tokenId) {
         require(
             block.timestamp >= tokenMintTimestamp[tokenId] + LOCK_PERIOD,
             "NFT locked for 12 months"
@@ -345,7 +369,7 @@ contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
         address to,
         uint256 tokenId,
         bytes memory data
-    ) public virtual override {
+    ) public virtual override onlyWhenNodeNotHosted(from, tokenId) {
         require(
             block.timestamp >= tokenMintTimestamp[tokenId] + LOCK_PERIOD,
             "NFT locked for 12 months"
@@ -451,6 +475,11 @@ contract AutheoNodeLicense2 is ERC721, ReentrancyGuard {
             msg.sender == admin,
             "Unauthorized! Only admin can perform this operation"
         );
+        _;
+    }
+
+    modifier onlyWhenNodeNotHosted(address from, uint256 tokenId) {
+        require(isNodeHosted[from][tokenId] != true, "Node is hosted");
         _;
     }
 }
